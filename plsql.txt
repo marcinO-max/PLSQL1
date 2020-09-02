@@ -1,0 +1,179 @@
+	--s16648 Piotr St
+----------1-----------------
+create or replace procedure Magaz(NazwaTowaru Varchar2, iloscZ Int, cenaZ Number)
+as
+v_licz1 Int;
+v_licz2 Int;
+begin
+Select count(1) into v_licz1 From Magazyn where Nazwa = NazwaTowaru;
+Select count(1) into v_licz2 From Magazyn where Nazwa = NazwaTowaru and cena = cenaZ;
+if v_licz1 = 0 or (v_licz1 > 0 and v_licz2 = 0) then
+insert into Magazyn(Nazwa, Cena) values (NazwaTowaru, cenaZ);
+else if v_licz2 > 0 then
+update Magazyn set stan = stan + iloscZ where nazwa = NazwaTowaru and cena = cenaZ;
+end if;
+end if;
+end;
+
+-----------------2----------------
+create or replace trigger Zmiana
+before update or insert
+on Magazyn 
+for each row 
+declare
+begin
+if updating then
+    if :new.stan < 0 then
+    RAISE_APPLICATION_ERROR(-20000, 'Nie mozna zmniejszyc stanu towaru ponizej zera');
+    end if;
+    if (:new.cena * 1.05) > :old.cena then
+    RAISE_APPLICATION_ERROR(-20000, 'Nie mozna podniesc ceny towaru o wiecej niz 5%');
+    end if;
+end if;
+
+if inserting then
+    if :new.cena <= 0 then
+    RAISE_APPLICATION_ERROR(-20000, 'Nie mozna wprowadzac towaru z cena zerowa lub ujemna');
+    end if;
+end if;
+end;
+
+
+
+----------------------------
+ O.T
+--zadanie 1
+Create or replace procedure Proc (pr VARCHAR2)
+AS
+srednia int;
+cursor ku IS SELECT IdOceny,IdStudenta, Wartosc, Przedmiot from Ocena where Przedmiot = SBD;
+
+wier ku%wierTYPE;
+suma INTEGER;
+ile Ocena.Wartosc%Type;
+sred Ocena.Wartosc%Type;
+Begin
+    open ku;
+    
+    loop
+        fetch ku into wier;
+        exit when ku%notfound;
+        
+        Select sum(Wartosc) into suma from Ocena,Student where Ocena.IdStudenta=Student.IdStudenta and Student.IdStudenta=wier.IdStudenta;
+        Select count(IdOceny) into ile from Ocena,Student where Ocena.IdStudenta=Student.IdStudenta and Student.IdStudenta=wier.IdStudenta;
+        sred:=suma/ile;
+    
+        if sred<2.5 then
+            DBMS_OUTPUT.PUT_LINE('Student ' || wier.IdStudenta || 'ma srednia' || sred);
+        end if;
+        
+    end loop;
+    close ku;
+end;
+
+--zadanie 2
+CREATE TABLE srednie ( Rok int, Srednia Number(3,2));
+
+CREATE OR REPLACE TRIGGER upd
+AFTER insert or update of idOceny ON Ocena
+BEGIN 
+UPDATE SREDNIE set srednia = (SELECT sum(wartosc)/count(IdOceny) FROM Ocena Where srednie.rok = Student.rok AND rok <=5 AND rok >=1 );
+END;
+
+-------------------------------------------
+-- zad1 --
+create or replace Procedure noweos (pesel OSOBA.PESEL%type, imie Varchar2, nazwisko Varchar2)
+AS
+v_ile Int := 0;
+v_maxid Int := 1;
+BEGIN
+    SELECT MAX(IdOsoby) INTO v_maxid FROM OSOBA;
+    IF v_maxid IS NULL THEN
+        v_maxid := 1;
+    ELSE
+        v_maxid := v_maxid + 1;
+    END IF;
+    SELECT Count(1) INTO v_ile FROM OSOBA WHERE PESEL = pesel;
+    IF v_ile > 0 THEN
+        raise_application_error(-20300,'Juz istnieje osoba z takim peselem');
+    ELSE
+        INSERT INTO OSOBA(IdOsoby, PESEL, Imie, Nazwisko) VALUES (v_maxid, pesel, imie, nazwisko);
+        dbms_output.put_line('Dodano nowa osobe');
+    END IF;
+END;
+
+go;
+-- zad2 --
+create or replace Trigger wyzwalacz
+BEFORE INSERT OR UPDATE OF PESEL OR DELETE
+ON OSOBA
+FOR EACH ROW
+BEGIN
+    IF DELETING THEN
+        IF :OLD.Nazwisko = 'Kowalski' THEN
+            raise_application_error(-20325,'Nie wolno usuwac Kowalskiego');
+        END IF;
+    ELSIF INSERTING OR UPDATING THEN
+        IF :NEW.PESEL.length != 11 THEN
+            raise_application_error(-20330,'Dlugosc numeru pesel nie moze byc inna niz 11');
+        END IF;
+    END IF;
+END;
+END;
+
+---------------------------------------------------------------
+A.K
+--1
+CREATE OR REPLACE PROCEDURE proc(p_item varchar2 := 'krasnal ogrodowy')
+AS
+v_stan Magazyn.stan%type;
+v_counter int;
+BEGIN
+    SELECT stan INTO v_stan FROM MAGAZYN WHERE nazwa LIKE p_item;
+    SELECT COUNT(*) INTO v_counter FROM MAGAZYN WHERE nazwa LIKE p_item;
+    IF v_stan >= 5 THEN
+        UPDATE MAGAZYN SET stan = v_stan-1 WHERE nazwa LIKE p_item;
+        DBMS_OUTPUT.PUT_LINE('zmniejszono stan o 1');
+    ELSE
+        IF v_counter = 0 THEN
+            RAISE_APPLICATION_ERROR(-29999,'Taki rekord nie istnieje');
+        ELSE
+            DBMS_OUTPUT.PUT_LINE('stan jest mniejszy niz 5');
+        END IF;
+    END IF;
+END;
+
+--2
+
+CREATE OR REPLACE TRIGGER trig
+BEFORE UPDATE OR INSERT 
+ON MAGAZYN
+FOR EACH ROW
+DECLARE
+v_cenaPoZmianie Magazyn.cena%type;
+BEGIN
+    SELECT cena INTO v_cenaPoZmianie FROM MAGAZYN WHERE cena = :old.cena;
+    v_cenaPoZmianie := v_cenaPoZmianie*0.1;
+    IF UPDATING THEN -- nie pozwoli zmienic nazwy towaru bez podnoszenia bledu wstawi ponownie stary rekord
+        IF :new.nazwa != :old.nazwa THEN
+            :new.nazwa := :old.nazwa;
+        END IF;
+        IF :new.cena > v_cenaPoZmianie THEN -- nie pozwoli podwyzszyc ceny o wiecej niz 10%
+            RAISE_APPLICATION_ERROR(-29999, 'Nie mozna podwyzszyc ceny towaru o wiecej niz 10%');
+        END IF;
+        IF :new.cena < v_cenaPoZmianie THEN -- nie pozwoli obnizyc ceny o wiecej niz 10%
+            RAISE_APPLICATION_ERROR(-29999, 'Nie mozna obnizyc ceny towaru o wiecej niz 10%');
+        END IF;
+    END IF;
+    IF INSERTING THEN -- nie pozwoli wprowadzic towaru z cena mniejsza niz 0
+        IF :new.cena < 0 THEN
+            RAISE_APPLICATION_ERROR(-29999, 'Cena nie moze byc mniejsza niz 0');
+        END IF;
+    END IF;
+END;
+
+
+
+
+
+
